@@ -241,6 +241,7 @@ const T = {
     intro: "Wspólna lista bez zakładania konta.<br>Kto dostanie link, ten dodaje i odhacza.<br>" +
       `Lista znika po ${TTL_DAYS} dniach bez użycia.`,
     cta: "Załóż nową listę",
+    privacy: "Prywatność",
   },
   en: {
     title: "Shopping",
@@ -254,13 +255,17 @@ const T = {
     intro: "A shared list with no accounts.<br>Anyone with the link can add and tick off items.<br>" +
       `The list disappears after ${TTL_DAYS} days without use.`,
     cta: "Start a new list",
+    privacy: "Privacy",
   },
 };
 
 const page = (lang: "pl" | "en") =>
   HTML.replace('lang="pl"', `lang="${lang}"`)
     .replace("<title>Zakupy</title>", `<title>${T[lang].title}</title>`)
+    .replace("{{privacy}}", T[lang].privacy)
     .replace("/*T*/", `var T=${JSON.stringify(T[lang])};`);
+
+const REPO = "https://github.com/michaljonik/shopping-list";
 
 const HTML = `<!doctype html><html lang="pl"><head>
 <meta charset="utf-8"><title>Zakupy</title>
@@ -272,7 +277,8 @@ const HTML = `<!doctype html><html lang="pl"><head>
 *{box-sizing:border-box;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--paper);color:var(--ink);
 font-family:ui-rounded,'SF Pro Rounded','Segoe UI Variable Display',system-ui,sans-serif}
-#app{max-width:520px;margin:0 auto;padding:20px 16px 120px}
+body{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
+#app{flex:1;width:100%;max-width:520px;margin:0 auto;padding:20px 16px 120px}
 h1{font-size:30px;font-weight:700;letter-spacing:-.6px;margin:0;cursor:pointer}
 .tedit{width:auto;max-width:62%;height:42px;font-size:26px;font-weight:700;letter-spacing:-.5px;
 padding:0 10px;border:1px solid var(--leaf);border-radius:12px}
@@ -309,8 +315,18 @@ background:0;border:1px solid var(--line);border-radius:14px}
 .empty{color:var(--muted);font-size:16px;text-align:center;padding:48px 20px;line-height:1.5}
 .cta{display:block;width:100%;height:56px;font:inherit;font-size:18px;color:#fff;background:var(--leaf);border:0;border-radius:16px}
 button{cursor:pointer}
+footer{width:100%;max-width:520px;margin:0 auto;padding:0 16px calc(24px + env(safe-area-inset-bottom));
+display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:13px;color:var(--muted)}
+footer a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+footer a:hover{color:var(--ink)}
+footer svg{width:14px;height:14px;fill:currentColor}
+footer .gh{margin-left:auto}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
-</style></head><body><div id="app"></div><script>/*T*/
+</style></head><body><div id="app"></div>
+<footer><span>Michał Jonik</span>
+<a href="${REPO}/blob/main/PRIVACY.md" target="_blank" rel="noopener">{{privacy}}</a>
+<a class="gh" href="${REPO}" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a></footer>
+<script>/*T*/
 var ROW=60, POLL=2000, DEV=Math.random().toString(36).slice(2,8), clock=0;
 var listId=(location.pathname.match(/^\\/l\\/([a-z2-9]{10})$/)||[])[1];
 var items={}, seq=0, drag=null, editing=null, status='start';

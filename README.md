@@ -43,6 +43,14 @@ build step.
 Create an HTTP val on Val Town and paste `main.ts`. The code uses Val Town's `std/sqlite`, so on
 any other platform you would have to replace that import.
 
+## Privacy
+
+What the app stores and for how long: [PRIVACY.md](PRIVACY.md).
+
+## License
+
+[MIT](LICENSE)
+
 ## Limits
 
 Anyone with the link has full access to the list. `/api/new` has no rate limit, and there is no
