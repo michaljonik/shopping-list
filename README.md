@@ -16,8 +16,9 @@ The app took half an hour, deployment and fixes included.
 Open the page and create a list, then send the link to the people you shop with. Anyone with the
 link adds items and ticks them off, and the other phones show the change within a couple of
 seconds. Holding an item lets you rename it; clearing the name deletes it. The dots on the right
-of each row are for dragging it to a new position. A list nobody opens for a week is deleted.
-The interface is in Polish.
+of each row are for dragging it to a new position. A list nobody opens for 14 days is deleted.
+The interface follows the browser language: Polish or English (add `?lang=pl` or `?lang=en`
+to force one).
 
 ## How it works
 
@@ -34,6 +35,8 @@ build step.
   field, so ticking an item off on one phone and renaming it on another don't overwrite each
   other. A deleted item stays in the database as a tombstone, so a phone that was offline cannot
   bring it back.
+- There is no scheduled cleanup. An expired list is deleted when someone opens its link, and all
+  expired lists are removed whenever a new list is created and on a random 2% of requests.
 
 ## Running your own copy
 

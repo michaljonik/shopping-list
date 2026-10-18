@@ -2,7 +2,8 @@
 // Jeśli ten import zawiedzie, podmień na:  import sqlite from "https://esm.town/v/std/sqlite/main.ts";
 import { sqlite } from "https://esm.town/v/std/sqlite";
 
-const WEEK = 7 * 24 * 3600 * 1000;
+const TTL_DAYS = 14; // lista nieużywana tyle dni wygasa
+const TTL = TTL_DAYS * 24 * 3600 * 1000;
 const ALPHABET = "abcdefghijkmnopqrstuvwxyz23456789"; // bez l/1/0/o
 
 let ready: Promise<void> | null = null;
@@ -40,9 +41,9 @@ async function q(sql: string, args: any[] = []) {
   );
 }
 
-// usuwa listy nietknięte od tygodnia (razem z pozycjami)
+// usuwa listy nietknięte od TTL_DAYS dni (razem z pozycjami)
 async function sweep() {
-  const cutoff = Date.now() - WEEK;
+  const cutoff = Date.now() - TTL;
   await sqlite.execute({
     sql:
       `DELETE FROM items WHERE list_id IN (SELECT id FROM lists WHERE last_active < ?)`,
@@ -157,10 +158,16 @@ export default async function (req: Request): Promise<Response> {
   if (api) {
     const listId = api[1];
     const cur = await q(
-      `SELECT seq, name, name_c, name_d FROM lists WHERE id = ?`,
+      `SELECT seq, name, name_c, name_d, last_active FROM lists WHERE id = ?`,
       [listId],
     );
     if (!cur.length) return json({ gone: true });
+    // sweep() chodzi rzadko, więc wygasłą listę trzeba złapać przy wejściu — inaczej odczyt by ją wskrzesił
+    if (Number(cur[0].last_active) < Date.now() - TTL) {
+      await sqlite.execute({ sql: `DELETE FROM items WHERE list_id = ?`, args: [listId] });
+      await sqlite.execute({ sql: `DELETE FROM lists WHERE id = ?`, args: [listId] });
+      return json({ gone: true });
+    }
 
     // nazwa listy jest osobnym rejestrem LWW — nie przechodzi przez merge() pozycji
     let nm: string | null = cur[0].name ?? null;
@@ -201,13 +208,59 @@ export default async function (req: Request): Promise<Response> {
     });
   }
 
-  return new Response(HTML, {
+  return new Response(page(pickLang(req, url)), {
     headers: {
       "content-type": "text/html; charset=utf-8",
       "referrer-policy": "no-referrer",
+      "vary": "Accept-Language",
     },
   });
 }
+
+// ?lang=pl|en wygrywa; dalej pierwszy pasujący język z Accept-Language; domyślnie angielski
+function pickLang(req: Request, url: URL): "pl" | "en" {
+  const forced = url.searchParams.get("lang");
+  if (forced === "pl" || forced === "en") return forced;
+  for (const part of (req.headers.get("accept-language") ?? "").split(",")) {
+    const code = part.trim().slice(0, 2).toLowerCase();
+    if (code === "pl" || code === "en") return code;
+  }
+  return "en";
+}
+
+const T = {
+  pl: {
+    title: "Zakupy",
+    add: "Co kupić?",
+    left: "do wzięcia",
+    empty: "Pusto. Wpisz pierwszą rzecz — kto ma ten link, zobaczy ją u siebie.",
+    basket: "W koszyku",
+    clear: "Usuń kupione",
+    gone: `Ta lista wygasła — była nieużywana przez ${TTL_DAYS} dni.`,
+    newOne: "Załóż nową",
+    intro: "Wspólna lista bez zakładania konta.<br>Kto dostanie link, ten dodaje i odhacza.<br>" +
+      `Lista znika po ${TTL_DAYS} dniach bez użycia.`,
+    cta: "Załóż nową listę",
+  },
+  en: {
+    title: "Shopping",
+    add: "What to buy?",
+    left: "to get",
+    empty: "Empty. Add the first item: anyone with this link will see it.",
+    basket: "In the basket",
+    clear: "Remove bought",
+    gone: `This list has expired after ${TTL_DAYS} days without use.`,
+    newOne: "Start a new one",
+    intro: "A shared list with no accounts.<br>Anyone with the link can add and tick off items.<br>" +
+      `The list disappears after ${TTL_DAYS} days without use.`,
+    cta: "Start a new list",
+  },
+};
+
+const page = (lang: "pl" | "en") =>
+  HTML.replace('lang="pl"', `lang="${lang}"`)
+    .replace("<title>Zakupy</title>", `<title>${T[lang].title}</title>`)
+    .replace("/*T*/", `var T=${JSON.stringify(T[lang])};`);
 
 const HTML = `<!doctype html><html lang="pl"><head>
 <meta charset="utf-8"><title>Zakupy</title>
@@ -257,7 +310,7 @@ background:0;border:1px solid var(--line);border-radius:14px}
 .cta{display:block;width:100%;height:56px;font:inherit;font-size:18px;color:#fff;background:var(--leaf);border:0;border-radius:16px}
 button{cursor:pointer}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
-</style></head><body><div id="app"></div><script>
+</style></head><body><div id="app"></div><script>/*T*/
 var ROW=60, POLL=2000, DEV=Math.random().toString(36).slice(2,8), clock=0;
 var listId=(location.pathname.match(/^\\/l\\/([a-z2-9]{10})$/)||[])[1];
 var items={}, seq=0, drag=null, editing=null, status='start';
@@ -289,8 +342,7 @@ async function sync(){
       body:payload?JSON.stringify(payload):undefined});
     var data=await res.json();
     if(data.gone){listId=null;document.getElementById('app').innerHTML=
-      '<p class="empty">Ta lista wygasła — była nieużywana przez tydzień.<br>'+
-      '<a href="/">Załóż nową</a></p>';return}
+      '<p class="empty">'+T.gone+'<br><a href="/">'+T.newOne+'</a></p>';return}
     pending={};listDirty=false;
     if(data.items&&data.items.length){absorb(data.items);}
     var rc=+data.name_c||0;
@@ -334,21 +386,21 @@ function move(id,from,to){
 
 function el(t,c,txt){var e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e}
 
-// nazwa listy: tap w nagłówek = edycja, puste pole wraca do "Zakupy"
+// nazwa listy: tap w nagłówek = edycja, puste pole wraca do domyślnej nazwy (T.title)
 function titleEl(){
-  var h=el('h1',null,listName||'Zakupy');h.id='title';h.onclick=editTitle;return h;
+  var h=el('h1',null,listName||T.title);h.id='title';h.onclick=editTitle;return h;
 }
 function paintTitle(){
   if(titleEditing)return;
   var h=document.getElementById('title');
-  if(h)h.textContent=listName||'Zakupy';
-  document.title=listName||'Zakupy';
+  if(h)h.textContent=listName||T.title;
+  document.title=listName||T.title;
 }
 function editTitle(){
   if(titleEditing)return;
   titleEditing=true;
   var h=document.getElementById('title');
-  var inp=el('input','tedit');inp.value=listName;inp.placeholder='Zakupy';
+  var inp=el('input','tedit');inp.value=listName;inp.placeholder=T.title;
   inp.maxLength=40;inp.autocomplete='off';
   h.replaceWith(inp);inp.focus();inp.select();
   var restore=function(){titleEditing=false;inp.replaceWith(titleEl());paintTitle()};
@@ -374,7 +426,7 @@ function shell(){
   top.appendChild(m);app.appendChild(top);
 
   var addRow=el('div','add');
-  var inp=el('input');inp.id='inp';inp.placeholder='Co kupić?';inp.enterKeyHint='done';
+  var inp=el('input');inp.id='inp';inp.placeholder=T.add;inp.enterKeyHint='done';
   inp.autocapitalize='sentences';inp.autocomplete='off';
   inp.onkeydown=function(e){if(e.key==='Enter'){add(inp.value);inp.value=''}};
   addRow.appendChild(inp);app.appendChild(addRow);
@@ -417,12 +469,12 @@ function render(){
   var s=sig();if(s===painted)return; // nic się nie zmieniło — nie ruszaj DOM-u
   painted=s;
   var A=actives(),D=dones();
-  document.getElementById('cnt').textContent=A.length+' do wzięcia';
+  document.getElementById('cnt').textContent=A.length+' '+T.left;
   var box=document.getElementById('active');
   var rest=document.getElementById('rest');
   box.innerHTML='';rest.innerHTML='';
   if(!A.length&&!D.length){
-    rest.appendChild(el('p','empty','Pusto. Wpisz pierwszą rzecz — kto ma ten link, zobaczy ją u siebie.'));
+    rest.appendChild(el('p','empty',T.empty));
   }
   box.style.height=(A.length*ROW)+'px';
   A.forEach(function(it,idx){
@@ -461,20 +513,18 @@ function render(){
   });
 
   if(D.length){
-    var sep=el('div','sep');sep.innerHTML='W koszyku ('+D.length+')<span></span>';rest.appendChild(sep);
+    var sep=el('div','sep');sep.innerHTML=T.basket+' ('+D.length+')<span></span>';rest.appendChild(sep);
     D.forEach(function(it){var b=el('button','done');
       var bx=el('span','box');bx.textContent='✓';b.appendChild(bx);
       b.appendChild(el('span','txt',it.name));b.onclick=function(){toggle(it.id)};rest.appendChild(b)});
-    var c=el('button','clear','Usuń kupione ('+D.length+')');c.onclick=clearDone;rest.appendChild(c);
+    var c=el('button','clear',T.clear+' ('+D.length+')');c.onclick=clearDone;rest.appendChild(c);
   }
 }
 
 function landing(){
   var app=document.getElementById('app');
-  app.innerHTML='<div class="top"><h1>Zakupy</h1></div>'+
-    '<p class="empty">Wspólna lista bez zakładania konta.<br>Kto dostanie link, ten dodaje i odhacza.<br>'+
-    'Lista znika po tygodniu bez użycia.</p>';
-  var b=el('button','cta','Załóż nową listę');
+  app.innerHTML='<div class="top"><h1>'+T.title+'</h1></div><p class="empty">'+T.intro+'</p>';
+  var b=el('button','cta',T.cta);
   b.onclick=async function(){b.disabled=true;
     var r=await fetch('/api/new',{method:'POST'});var d=await r.json();location.href='/l/'+d.id};
   app.appendChild(b);
