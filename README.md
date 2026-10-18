@@ -3,6 +3,8 @@
 A shared shopping list hosted here:
 https://shopping-list.val.run/
 
+<img src="docs/screenshot.png" alt="A list with five items to get: milk, butter, eggs, beef, cheese" width="420">
+
 ## Why it exists
 
 On a catamaran trip around Sardinia with friends, we needed one shopping list for the boat that
